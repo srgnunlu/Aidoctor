@@ -1,0 +1,386 @@
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text, Card, Chip, Button, ActivityIndicator, Divider, FAB, Snackbar } from 'react-native-paper';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchLabResults, createLabResult, setRealtimeLabs } from '../../store/slices/labSlice';
+import { fetchImagingResults, createImagingResult, setRealtimeImaging } from '../../store/slices/imagingSlice';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import AddLabResultModal from '../../components/AddLabResultModal';
+import AddImagingResultModal from '../../components/AddImagingResultModal';
+import colors from '../../constants/colors';
+
+const LAB_TYPE_LABELS = {
+  BLOOD: 'Kan',
+  URINE: 'İdrar',
+  OTHER: 'Diğer',
+};
+
+const IMAGING_TYPE_LABELS = {
+  XRAY: 'Röntgen',
+  CT: 'BT',
+  MRI: 'MR',
+  ULTRASOUND: 'Ultrason',
+  OTHER: 'Diğer',
+};
+
+const STATUS_COLORS = {
+  PENDING: colors.warning,
+  COMPLETED: colors.info,
+  REVIEWED: colors.success,
+};
+
+const STATUS_LABELS = {
+  PENDING: 'Bekliyor',
+  COMPLETED: 'Tamamlandı',
+  REVIEWED: 'İncelendi',
+};
+
+export default function TestsTab({ patientId }) {
+  const dispatch = useDispatch();
+  const { labs, loading: labsLoading, createLoading: labCreateLoading } = useSelector((state) => state.lab);
+  const { imaging, loading: imagingLoading, createLoading: imagingCreateLoading } = useSelector((state) => state.imaging);
+  
+  const [labModalVisible, setLabModalVisible] = useState(false);
+  const [imagingModalVisible, setImagingModalVisible] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    if (!patientId) return;
+
+    const labsRef = collection(db, 'patients', patientId, 'labResults');
+    const labsQuery = query(labsRef, orderBy('orderedAt', 'desc'));
+
+    const unsubscribeLabs = onSnapshot(
+      labsQuery,
+      (snapshot) => {
+        const labs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          orderedAt: doc.data().orderedAt?.toDate?.() || new Date(doc.data().orderedAt),
+          resultedAt: doc.data().resultedAt?.toDate?.() || (doc.data().resultedAt ? new Date(doc.data().resultedAt) : null)
+        }));
+        dispatch(setRealtimeLabs(labs));
+      },
+      (error) => {
+        console.error('Real-time labs error:', error);
+        dispatch(fetchLabResults(patientId));
+      }
+    );
+
+    const imagingRef = collection(db, 'patients', patientId, 'imagingResults');
+    const imagingQuery = query(imagingRef, orderBy('orderedAt', 'desc'));
+
+    const unsubscribeImaging = onSnapshot(
+      imagingQuery,
+      (snapshot) => {
+        const imaging = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          orderedAt: doc.data().orderedAt?.toDate?.() || new Date(doc.data().orderedAt),
+          resultedAt: doc.data().resultedAt?.toDate?.() || (doc.data().resultedAt ? new Date(doc.data().resultedAt) : null)
+        }));
+        dispatch(setRealtimeImaging(imaging));
+      },
+      (error) => {
+        console.error('Real-time imaging error:', error);
+        dispatch(fetchImagingResults(patientId));
+      }
+    );
+
+    return () => {
+      unsubscribeLabs();
+      unsubscribeImaging();
+    };
+  }, [dispatch, patientId]);
+
+  const handleSaveLab = async (data) => {
+    const result = await dispatch(createLabResult({ patientId, data }));
+    if (result.type === 'lab/createLabResult/fulfilled') {
+      setLabModalVisible(false);
+      setSuccessMessage('Laboratuvar sonucu eklendi');
+      setShowSuccess(true);
+    }
+  };
+
+  const handleSaveImaging = async (data) => {
+    const result = await dispatch(createImagingResult({ patientId, data }));
+    if (result.type === 'imaging/createImagingResult/fulfilled') {
+      setImagingModalVisible(false);
+      setSuccessMessage('Görüntüleme sonucu eklendi');
+      setShowSuccess(true);
+    }
+  };
+
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const renderLabCard = (lab) => (
+    <Card key={lab.id} style={styles.card}>
+      <Card.Content>
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Text variant="titleMedium" style={styles.testTitle}>
+              {LAB_TYPE_LABELS[lab.testType]} Testi
+            </Text>
+            <Text variant="bodySmall" style={styles.dateText}>
+              İstem: {formatDate(lab.orderedAt)}
+            </Text>
+          </View>
+          <Chip
+            mode="flat"
+            style={[styles.statusChip, { backgroundColor: STATUS_COLORS[lab.status] + '20' }]}
+            textStyle={[styles.statusText, { color: STATUS_COLORS[lab.status] }]}
+          >
+            {STATUS_LABELS[lab.status]}
+          </Chip>
+        </View>
+        {lab.results && (
+          <>
+            <Divider style={styles.divider} />
+            <Text variant="bodySmall" style={styles.label}>Sonuçlar:</Text>
+            <Text variant="bodyMedium" style={styles.results}>
+              {JSON.stringify(lab.results, null, 2)}
+            </Text>
+          </>
+        )}
+        {lab.resultedAt && (
+          <Text variant="bodySmall" style={styles.dateText}>
+            Sonuç: {formatDate(lab.resultedAt)}
+          </Text>
+        )}
+      </Card.Content>
+    </Card>
+  );
+
+  const renderImagingCard = (img) => (
+    <Card key={img.id} style={styles.card}>
+      <Card.Content>
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Text variant="titleMedium" style={styles.testTitle}>
+              {IMAGING_TYPE_LABELS[img.imagingType]}
+            </Text>
+            <Text variant="bodySmall" style={styles.dateText}>
+              İstem: {formatDate(img.orderedAt)}
+            </Text>
+          </View>
+          <Chip
+            mode="flat"
+            style={[styles.statusChip, { backgroundColor: STATUS_COLORS[img.status] + '20' }]}
+            textStyle={[styles.statusText, { color: STATUS_COLORS[img.status] }]}
+          >
+            {STATUS_LABELS[img.status]}
+          </Chip>
+        </View>
+        {img.findings && (
+          <>
+            <Divider style={styles.divider} />
+            <Text variant="bodySmall" style={styles.label}>Bulgular:</Text>
+            <Text variant="bodyMedium" style={styles.findings}>
+              {img.findings}
+            </Text>
+          </>
+        )}
+        {img.completedAt && (
+          <Text variant="bodySmall" style={styles.dateText}>
+            Tamamlandı: {formatDate(img.completedAt)}
+          </Text>
+        )}
+      </Card.Content>
+    </Card>
+  );
+
+  if (labsLoading || imagingLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text variant="titleMedium" style={styles.sectionTitle}>
+              Laboratuvar Testleri
+            </Text>
+            <Button
+              mode="contained"
+              icon="plus"
+              onPress={() => setLabModalVisible(true)}
+              compact
+              style={styles.addButton}
+            >
+              Ekle
+            </Button>
+          </View>
+          {labs && labs.length > 0 ? (
+            labs.map(renderLabCard)
+          ) : (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text variant="bodyMedium" style={styles.noData}>
+                  Henüz laboratuvar testi kaydı yok
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text variant="titleMedium" style={styles.sectionTitle}>
+              Görüntüleme Tetkikleri
+            </Text>
+            <Button
+              mode="contained"
+              icon="plus"
+              onPress={() => setImagingModalVisible(true)}
+              compact
+              style={styles.addButton}
+            >
+              Ekle
+            </Button>
+          </View>
+          {imaging && imaging.length > 0 ? (
+            imaging.map(renderImagingCard)
+          ) : (
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text variant="bodyMedium" style={styles.noData}>
+                  Henüz görüntüleme tetkiki kaydı yok
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+        </View>
+      </ScrollView>
+
+      <AddLabResultModal
+        visible={labModalVisible}
+        onDismiss={() => setLabModalVisible(false)}
+        onSave={handleSaveLab}
+        loading={labCreateLoading}
+        patientId={patientId}
+      />
+
+      <AddImagingResultModal
+        visible={imagingModalVisible}
+        onDismiss={() => setImagingModalVisible(false)}
+        onSave={handleSaveImaging}
+        loading={imagingCreateLoading}
+        patientId={patientId}
+      />
+
+      <Snackbar
+        visible={showSuccess}
+        onDismiss={() => setShowSuccess(false)}
+        duration={3000}
+        style={styles.successSnackbar}
+      >
+        {successMessage}
+      </Snackbar>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  section: {
+    marginTop: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  addButton: {
+    height: 32,
+  },
+  card: {
+    margin: 12,
+    marginTop: 4,
+    backgroundColor: colors.white,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  testTitle: {
+    fontWeight: 'bold',
+    color: colors.black,
+    marginBottom: 4,
+  },
+  dateText: {
+    color: colors.gray,
+    marginTop: 4,
+  },
+  statusChip: {
+    height: 28,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  divider: {
+    marginVertical: 12,
+  },
+  label: {
+    color: colors.gray,
+    marginBottom: 4,
+  },
+  results: {
+    color: colors.darkGray,
+    fontFamily: 'monospace',
+    backgroundColor: colors.background,
+    padding: 8,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  findings: {
+    color: colors.darkGray,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  noData: {
+    color: colors.gray,
+    textAlign: 'center',
+  },
+  successSnackbar: {
+    backgroundColor: colors.success,
+  },
+});

@@ -1,0 +1,94 @@
+PROMPT 10: AI Integration & Chat
+Hedef
+OpenAI/Claude API entegrasyonu ve chat sistemi
+Yapılacaklar
+
+Backend: src/services/aiService.js oluştur
+Backend: src/controllers/aiController.js oluştur
+Backend: src/controllers/chatController.js oluştur
+Routes ekle
+
+OpenAI Integration
+javascript// services/aiService.js
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+async function analyzePatient(patientData) {
+  const prompt = `
+Hasta Bilgileri:
+- İsim: ${patientData.name}
+- Yaş: ${patientData.age}
+- Şikayet: ${patientData.complaint}
+- Vital Bulgular: ${JSON.stringify(patientData.vitals)}
+
+Lütfen diferansiyel tanı listesi, önerilen tetkikler ve tedavi yaklaşımı sun.
+JSON formatında cevap ver.
+  `;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      { role: "system", content: "Sen acil tıp uzmanı bir AI asistansın." },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.7,
+  });
+
+  return completion.choices[0].message.content;
+}
+
+module.exports = { analyzePatient };
+Chat Endpoint
+POST   /api/patients/:patientId/chat
+GET    /api/patients/:patientId/chat
+Mobile Chat UI
+
+Mesaj listesi (ScrollView)
+Input area
+Typing indicator
+Message bubbles (user vs AI)
+
+
+🎉 PROJE TAMAMLANDI!
+Tüm 10 prompt tamamlandığında:
+
+✅ Backend API çalışıyor
+✅ Database bağlantısı var
+✅ Authentication sistemi çalışıyor
+✅ Hasta CRUD işlemleri yapılıyor
+✅ Vital signs, history, labs ekleniyor
+✅ Mobil uygulama çalışıyor
+✅ Auth ekranları çalışıyor
+✅ Hasta listesi gösteriliyor
+✅ Hasta detay sayfaları çalışıyor
+✅ AI entegrasyonu yapıldı
+✅ Chat sistemi çalışıyor
+
+
+📦 Final Deployment
+Backend (Render)
+bash# Render'da web service oluştur
+# GitHub repo bağla
+# Build command: npm install && npx prisma generate
+# Start command: npm start
+# Environment variables ekle
+Mobile (Expo)
+bash# EAS Build
+eas build --platform android
+eas build --platform ios
+
+🚀 Sonraki Adımlar (Opsiyonel)
+
+Notification sistemi (Push notifications)
+Image upload (S3 integration)
+Offline mode (AsyncStorage)
+Analytics (Mixpanel/Amplitude)
+Error tracking (Sentry)
+Testing (Jest, Detox)
+CI/CD Pipeline
+Admin panel
+Subscription payment (Stripe)
+Email verification

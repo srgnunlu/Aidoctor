@@ -1,0 +1,225 @@
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Modal, Portal, Text, TextInput, Button, SegmentedButtons, IconButton } from 'react-native-paper';
+import { useSelector } from 'react-redux';
+import colors from '../constants/colors';
+import ImagePickerModal from './ImagePickerModal';
+import OCRPreviewModal from './OCRPreviewModal';
+import { uploadImageToOCR } from '../services/ocrService';
+
+export default function AddLabResultModal({ visible, onDismiss, onSave, loading, patientId }) {
+  const [testType, setTestType] = useState('BLOOD');
+  const [testName, setTestName] = useState('');
+  const [results, setResults] = useState('');
+  const [imagePickerVisible, setImagePickerVisible] = useState(false);
+  const [ocrPreviewVisible, setOcrPreviewVisible] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [ocrResult, setOcrResult] = useState(null);
+  const [ocrProcessing, setOcrProcessing] = useState(false);
+
+  const handleSave = () => {
+    if (!testName.trim() || !results.trim()) return;
+    
+    const data = {
+      testType,
+      testName: testName.trim(),
+      results: results.trim(),
+      status: 'COMPLETED',
+      orderedAt: new Date().toISOString(),
+      resultedAt: new Date().toISOString(),
+    };
+
+    onSave(data);
+  };
+
+  const resetForm = () => {
+    setTestType('BLOOD');
+    setTestName('');
+    setResults('');
+    setSelectedImage(null);
+    setOcrResult(null);
+  };
+
+  const handleImageSelected = async (imageAsset, sourceType) => {
+    try {
+      setOcrProcessing(true);
+      setSelectedImage(imageAsset);
+
+      const result = await uploadImageToOCR(imageAsset, patientId, sourceType, 'LAB_REPORT');
+      setOcrResult(result);
+      setOcrPreviewVisible(true);
+    } catch (error) {
+      console.error('OCR error:', error);
+      Alert.alert('Hata', 'Fotoğraf işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setOcrProcessing(false);
+    }
+  };
+
+  const handleOCRConfirm = (confirmedData) => {
+    setResults(confirmedData.extractedText);
+    
+    if (confirmedData.structuredData?.results && confirmedData.structuredData.results.length > 0) {
+      const firstResult = confirmedData.structuredData.results[0];
+      if (firstResult.testName && !testName) {
+        setTestName(firstResult.testName);
+      }
+    }
+    
+    setOcrPreviewVisible(false);
+  };
+
+  return (
+    <Portal>
+      <Modal 
+        visible={visible} 
+        onDismiss={() => {
+          resetForm();
+          onDismiss();
+        }} 
+        contentContainerStyle={styles.modal}
+      >
+        <Text variant="titleLarge" style={styles.title}>
+          Laboratuvar Sonucu Ekle
+        </Text>
+
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.ocrButtonContainer}>
+            <Button
+              mode="outlined"
+              icon="camera"
+              onPress={() => setImagePickerVisible(true)}
+              loading={ocrProcessing}
+              disabled={ocrProcessing || loading}
+              style={styles.ocrButton}
+            >
+              {ocrProcessing ? 'İşleniyor...' : 'Fotoğraftan Ekle (OCR)'}
+            </Button>
+          </View>
+
+          <Text variant="bodySmall" style={styles.label}>Test Tipi</Text>
+          <SegmentedButtons
+            value={testType}
+            onValueChange={setTestType}
+            buttons={[
+              { value: 'BLOOD', label: 'Kan' },
+              { value: 'URINE', label: 'İdrar' },
+              { value: 'OTHER', label: 'Diğer' },
+            ]}
+            style={styles.segmented}
+          />
+
+          <TextInput
+            mode="outlined"
+            label="Test Adı *"
+            value={testName}
+            onChangeText={setTestName}
+            style={styles.input}
+            placeholder="Örn: Tam Kan Sayımı, Böbrek Fonksiyon Testleri"
+          />
+
+          <TextInput
+            mode="outlined"
+            label="Sonuçlar *"
+            value={results}
+            onChangeText={setResults}
+            multiline
+            numberOfLines={5}
+            style={styles.input}
+            placeholder="Test sonuçlarını girin..."
+          />
+
+          <Text variant="bodySmall" style={styles.hint}>
+            Örnek: Hemoglobin: 14.2 g/dL, WBC: 8500/μL, Glukoz: 95 mg/dL
+          </Text>
+        </ScrollView>
+
+        <View style={styles.actions}>
+          <Button 
+            mode="outlined" 
+            onPress={() => {
+              resetForm();
+              onDismiss();
+            }} 
+            style={styles.button}
+          >
+            İptal
+          </Button>
+          <Button 
+            mode="contained" 
+            onPress={handleSave} 
+            loading={loading}
+            disabled={!testName.trim() || !results.trim() || loading}
+            style={styles.button}
+          >
+            Kaydet
+          </Button>
+        </View>
+
+        <ImagePickerModal
+          visible={imagePickerVisible}
+          onDismiss={() => setImagePickerVisible(false)}
+          onImageSelected={handleImageSelected}
+          title="Lab Sonucu Fotoğrafı"
+        />
+
+        <OCRPreviewModal
+          visible={ocrPreviewVisible}
+          onDismiss={() => setOcrPreviewVisible(false)}
+          onConfirm={handleOCRConfirm}
+          ocrResult={ocrResult}
+          imageUri={selectedImage?.uri}
+          category="LAB_REPORT"
+        />
+      </Modal>
+    </Portal>
+  );
+}
+
+const styles = StyleSheet.create({
+  modal: {
+    backgroundColor: colors.white,
+    margin: 20,
+    padding: 20,
+    borderRadius: 8,
+    maxHeight: '80%',
+  },
+  scrollView: {
+    maxHeight: 400,
+  },
+  title: {
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 16,
+  },
+  ocrButtonContainer: {
+    marginBottom: 16,
+  },
+  ocrButton: {
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+  },
+  label: {
+    color: colors.gray,
+    marginBottom: 8,
+  },
+  segmented: {
+    marginBottom: 16,
+  },
+  input: {
+    marginBottom: 8,
+  },
+  hint: {
+    color: colors.gray,
+    fontStyle: 'italic',
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 16,
+  },
+  button: {
+    minWidth: 100,
+  },
+});

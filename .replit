@@ -1,0 +1,88 @@
+modules = ["nodejs-20"]
+[agent]
+expertMode = true
+integrations = ["javascript_object_storage:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Frontend"
+
+[[workflows.workflow]]
+name = "Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && PORT=3001 npm run dev"
+
+[[workflows.workflow]]
+name = "Frontend"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd mobile && npx expo start --tunnel --port 8082"
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 4200
+
+[[ports]]
+localPort = 8001
+externalPort = 3003
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 8082
+externalPort = 3000
+
+[[ports]]
+localPort = 36743
+externalPort = 5000
+
+[[ports]]
+localPort = 41845
+externalPort = 3002
+
+[[ports]]
+localPort = 44359
+externalPort = 5173
+
+[objectStorage]
+defaultBucketID = "replit-objstore-403828cd-a623-4421-ac1b-71627f1a2413"
