@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../config/firebase';
+import { API_BASE_URL } from '../config/api';
 
 let store;
 
@@ -9,8 +10,8 @@ export const setStore = (reduxStore) => {
 };
 
 const api = axios.create({
-  baseURL: 'https://15e9cc46-730a-4eb2-899b-69e93b81757d-00-os7rvp0fmmje.riker.replit.dev:3001/api',
-  timeout: 10000,
+  baseURL: `${API_BASE_URL}/api`,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
