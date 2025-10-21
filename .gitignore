@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment Variables
+.env
+.env.local
+.env.development
+.env.production
+backend/.env
+backend/.env.local
+
+# Replit Specific Files (not needed for local development)
+.replit
+replit.nix
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Firebase
+firebase-debug.log
+firestore-debug.log
+.firebase/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

@@ -1,7 +1,5 @@
-const { Client } = require('@replit/object-storage');
+const { getStorage } = require('../config/firebase');
 const { randomUUID } = require('crypto');
-
-const objectStorageClient = new Client();
 
 class ObjectNotFoundError extends Error {
   constructor() {
@@ -12,6 +10,18 @@ class ObjectNotFoundError extends Error {
 }
 
 class ObjectStorageService {
+  constructor() {
+    this.bucket = null;
+  }
+
+  getBucket() {
+    if (!this.bucket) {
+      const storage = getStorage();
+      this.bucket = storage.bucket();
+    }
+    return this.bucket;
+  }
+
   getPrivateObjectDir() {
     return 'medical-files';
   }
@@ -21,12 +31,15 @@ class ObjectStorageService {
     const key = `${this.getPrivateObjectDir()}/uploads/${objectId}.${fileExtension}`;
 
     try {
-      const result = await objectStorageClient.uploadFromBytes(key, imageBuffer);
-      
-      if (!result.ok) {
-        throw new Error(`Upload failed: ${result.error}`);
-      }
-      
+      const bucket = this.getBucket();
+      const file = bucket.file(key);
+
+      await file.save(imageBuffer, {
+        metadata: {
+          contentType: this.getContentType(fileExtension),
+        },
+      });
+
       return {
         key,
         objectPath: key,
@@ -40,7 +53,7 @@ class ObjectStorageService {
 
   async getObjectEntityFile(objectPath) {
     let key = objectPath;
-    
+
     if (objectPath.startsWith('/objects/')) {
       const parts = objectPath.slice(1).split('/');
       const entityId = parts.slice(1).join('/');
@@ -48,26 +61,30 @@ class ObjectStorageService {
     }
 
     try {
-      const result = await objectStorageClient.downloadAsBytes(key);
-      if (!result.ok) {
+      const bucket = this.getBucket();
+      const file = bucket.file(key);
+      const [exists] = await file.exists();
+
+      if (!exists) {
         throw new ObjectNotFoundError();
       }
+
       return { key };
     } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        throw error;
+      }
       throw new ObjectNotFoundError();
     }
   }
 
   async getObjectBuffer(file) {
     try {
-      const key = file.key;
-      const result = await objectStorageClient.downloadAsBytes(key);
-      
-      if (!result.ok) {
-        throw new Error(`Download failed: ${result.error}`);
-      }
-      
-      return result.value[0];
+      const bucket = this.getBucket();
+      const fileRef = bucket.file(file.key);
+      const [buffer] = await fileRef.download();
+
+      return buffer;
     } catch (error) {
       console.error('Error getting object buffer:', error);
       throw error;
@@ -76,23 +93,11 @@ class ObjectStorageService {
 
   async downloadObject(file, res, cacheTtlSec = 3600) {
     try {
-      const key = file.key;
-      const result = await objectStorageClient.downloadAsBytes(key);
-      
-      if (!result.ok) {
-        throw new Error(`Download failed: ${result.error}`);
-      }
-      
-      const buffer = result.value[0];
-      
-      let contentType = 'application/octet-stream';
-      if (key.endsWith('.jpg') || key.endsWith('.jpeg')) {
-        contentType = 'image/jpeg';
-      } else if (key.endsWith('.png')) {
-        contentType = 'image/png';
-      } else if (key.endsWith('.pdf')) {
-        contentType = 'application/pdf';
-      }
+      const bucket = this.getBucket();
+      const fileRef = bucket.file(file.key);
+      const [buffer] = await fileRef.download();
+
+      const contentType = this.getContentType(file.key);
 
       res.set({
         'Content-Type': contentType,
@@ -111,11 +116,15 @@ class ObjectStorageService {
 
   async listObjects(prefix = '') {
     try {
-      const result = await objectStorageClient.list({ prefix });
-      if (!result.ok) {
-        return [];
-      }
-      return result.value;
+      const bucket = this.getBucket();
+      const [files] = await bucket.getFiles({ prefix });
+
+      return files.map(file => ({
+        name: file.name,
+        size: file.metadata.size,
+        contentType: file.metadata.contentType,
+        updated: file.metadata.updated,
+      }));
     } catch (error) {
       console.error('Error listing objects:', error);
       return [];
@@ -124,17 +133,36 @@ class ObjectStorageService {
 
   async deleteObject(key) {
     try {
-      const result = await objectStorageClient.delete(key);
-      return result.ok;
+      const bucket = this.getBucket();
+      const file = bucket.file(key);
+      await file.delete();
+      return true;
     } catch (error) {
       console.error('Error deleting object:', error);
       return false;
     }
+  }
+
+  getContentType(keyOrExtension) {
+    let contentType = 'application/octet-stream';
+
+    if (keyOrExtension.endsWith('.jpg') || keyOrExtension.endsWith('.jpeg')) {
+      contentType = 'image/jpeg';
+    } else if (keyOrExtension.endsWith('.png')) {
+      contentType = 'image/png';
+    } else if (keyOrExtension.endsWith('.pdf')) {
+      contentType = 'application/pdf';
+    } else if (keyOrExtension.endsWith('.gif')) {
+      contentType = 'image/gif';
+    } else if (keyOrExtension.endsWith('.webp')) {
+      contentType = 'image/webp';
+    }
+
+    return contentType;
   }
 }
 
 module.exports = {
   ObjectStorageService,
   ObjectNotFoundError,
-  objectStorageClient,
 };
