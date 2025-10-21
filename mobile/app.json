@@ -29,7 +29,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiUrl": "http://localhost:3001"
+      "apiUrl": "https://aidoctor-ruddy.vercel.app"
     }
   }
 }
