@@ -28,13 +28,13 @@ Gerekli dosyalar:
 
 **Framework Preset:** Other (Node.js seçilecek)
 
-**Root Directory:** `backend` (önemli!)
+**Root Directory:** `backend` ⚠️ ÇOK ÖNEMLİ!
 
 **Build & Development Settings:**
-- Build Command: `npm install` (varsayılan)
+- Build Command: bırakın boş
 - Output Directory: bırakın boş
-- Install Command: `npm install` (varsayılan)
-- Development Command: `npm run dev` (varsayılan)
+- Install Command: `npm install`
+- Development Command: bırakın boş
 
 ### 4. Environment Variables Ekleyin
 
