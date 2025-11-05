@@ -1,13 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { supabase } from '../../config/supabase';
 import api from '../../services/api';
+import { API_ENDPOINTS } from '../../config/api';
 
 // Async thunks
 export const registerUser = createAsyncThunk(
   'auth/register',
   async ({ email, password, name, title, specialty, phone }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/auth/register', {
+      const response = await api.post(API_ENDPOINTS.REGISTER, {
         email,
         password,
         name,
@@ -46,7 +47,7 @@ export const loginUser = createAsyncThunk(
       }
 
       // Get user profile from backend
-      const response = await api.get('/auth/me', {
+      const response = await api.get(API_ENDPOINTS.REFRESH, {
         headers: {
           Authorization: `Bearer ${authData.session.access_token}`,
         },
