@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { TextInput, Button, Text, Snackbar } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
-import { login, clearError } from '../../store/slices/authSlice';
+import { loginUser, clearError } from '../../store/slices/authSlice';
 import colors from '../../constants/colors';
 
 export default function LoginScreen({ navigation }) {
@@ -23,7 +23,7 @@ export default function LoginScreen({ navigation }) {
     if (!email || !password) {
       return;
     }
-    dispatch(login({ email, password }));
+    dispatch(loginUser({ email, password }));
   };
 
   return (

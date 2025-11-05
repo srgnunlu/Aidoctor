@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { TextInput, Button, Text, Snackbar } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
-import { register, clearError } from '../../store/slices/authSlice';
+import { registerUser, clearError } from '../../store/slices/authSlice';
 import colors from '../../constants/colors';
 
 export default function RegisterScreen({ navigation }) {
@@ -53,7 +53,7 @@ export default function RegisterScreen({ navigation }) {
     if (!validateForm()) {
       return;
     }
-    dispatch(register({ email, password, name }));
+    dispatch(registerUser({ email, password, name }));
   };
 
   const displayError = error || validationError;
