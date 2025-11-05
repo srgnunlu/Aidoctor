@@ -64,15 +64,7 @@ const register = async (req, res) => {
 
     logger.info('New user registered', { email, userId: user.id });
 
-    // Create session for the user
-    const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
-      user_id: user.id
-    });
-
-    if (sessionError) {
-      logger.error('Error creating session', { error: sessionError.message });
-    }
-
+    // Return user data - mobile app will handle sign in
     return successResponse(res, 201, 'User registered successfully', {
       user: {
         id: user.id,
@@ -84,8 +76,7 @@ const register = async (req, res) => {
         role: 'DOCTOR',
         subscription_type: 'FREE',
       },
-      session: sessionData?.session || null,
-      access_token: sessionData?.session?.access_token || null,
+      message: 'Please sign in with your credentials',
     });
 
   } catch (error) {
