@@ -1,35 +1,45 @@
-const { getFirestore } = require('../config/firebase');
+const { getSupabaseAdmin } = require('../config/supabase');
 const { getParameterStatus, getParameterInfo } = require('../utils/labReferenceRanges');
 
 const getAllLabResults = async (patientId, userId) => {
-  const db = getFirestore();
-  const patientDoc = await db.collection('patients').doc(patientId).get();
+  const supabase = getSupabaseAdmin();
+  
+  // Verify patient belongs to user
+  const { data: patientData, error: patientError } = await supabase
+    .from('patients')
+    .select('user_id, is_active')
+    .eq('id', patientId)
+    .single();
 
-  if (!patientDoc.exists || patientDoc.data().userId !== userId || !patientDoc.data().isActive) {
+  if (patientError || !patientData || patientData.user_id !== userId || !patientData.is_active) {
     throw new Error('Patient not found or access denied');
   }
 
-  const labResultsSnapshot = await db.collection('patients').doc(patientId)
-    .collection('labResults')
-    .orderBy('orderedAt', 'desc')
-    .get();
+  // Get lab results
+  const { data: labResults, error } = await supabase
+    .from('lab_results')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('ordered_at', { ascending: false });
 
-  const labResults = [];
-  labResultsSnapshot.forEach(doc => {
-    labResults.push({
-      id: doc.id,
-      ...doc.data()
-    });
-  });
+  if (error) {
+    throw new Error(`Failed to fetch lab results: ${error.message}`);
+  }
 
-  return labResults;
+  return labResults || [];
 };
 
 const createLabResult = async (patientId, userId, labData) => {
-  const db = getFirestore();
-  const patientDoc = await db.collection('patients').doc(patientId).get();
+  const supabase = getSupabaseAdmin();
+  
+  // Verify patient belongs to user
+  const { data: patientData, error: patientError } = await supabase
+    .from('patients')
+    .select('user_id, is_active')
+    .eq('id', patientId)
+    .single();
 
-  if (!patientDoc.exists || patientDoc.data().userId !== userId || !patientDoc.data().isActive) {
+  if (patientError || !patientData || patientData.user_id !== userId || !patientData.is_active) {
     throw new Error('Patient not found or access denied');
   }
 
@@ -55,39 +65,53 @@ const createLabResult = async (patientId, userId, labData) => {
   }
 
   const labResult = {
-    testName: labData.testName,
-    testType: labData.testType,
+    patient_id: patientId,
+    test_name: labData.testName,
+    test_type: labData.testType,
     category: labData.category || 'BIOCHEMISTRY',
-    results: labData.results ?? {},
+    results: labData.results || {},
     parameters: parameters,
-    status: labData.status ?? 'PENDING',
-    notes: labData.notes ?? null,
-    orderedAt: labData.orderedAt ?? now,
-    resultedAt: labData.resultedAt ?? (labData.status === 'COMPLETED' ? now : null)
+    status: labData.status || 'PENDING',
+    notes: labData.notes || null,
+    ordered_at: labData.orderedAt || now,
+    resulted_at: labData.resultedAt || (labData.status === 'COMPLETED' ? now : null)
   };
 
-  const docRef = await db.collection('patients').doc(patientId)
-    .collection('labResults')
-    .add(labResult);
+  const { data: newLabResult, error } = await supabase
+    .from('lab_results')
+    .insert(labResult)
+    .select()
+    .single();
 
-  return {
-    id: docRef.id,
-    ...labResult
-  };
+  if (error) {
+    throw new Error(`Failed to create lab result: ${error.message}`);
+  }
+
+  return newLabResult;
 };
 
 const updateLabStatus = async (labId, patientId, userId, status) => {
-  const db = getFirestore();
-  const patientDoc = await db.collection('patients').doc(patientId).get();
+  const supabase = getSupabaseAdmin();
+  
+  // Verify patient belongs to user
+  const { data: patientData, error: patientError } = await supabase
+    .from('patients')
+    .select('user_id, is_active')
+    .eq('id', patientId)
+    .single();
 
-  if (!patientDoc.exists || patientDoc.data().userId !== userId || !patientDoc.data().isActive) {
+  if (patientError || !patientData || patientData.user_id !== userId || !patientData.is_active) {
     throw new Error('Patient not found or access denied');
   }
 
-  const labRef = db.collection('patients').doc(patientId).collection('labResults').doc(labId);
-  const labDoc = await labRef.get();
+  // Verify lab result belongs to patient
+  const { data: existingLab, error: labError } = await supabase
+    .from('lab_results')
+    .select('patient_id')
+    .eq('id', labId)
+    .single();
 
-  if (!labDoc.exists) {
+  if (labError || !existingLab || existingLab.patient_id !== patientId) {
     throw new Error('Lab result not found');
   }
 
@@ -95,77 +119,64 @@ const updateLabStatus = async (labId, patientId, userId, status) => {
     status: status
   };
 
-  if (status === 'COMPLETED' && !labDoc.data().resultedAt) {
-    updateData.resultedAt = new Date().toISOString();
+  if (status === 'COMPLETED') {
+    updateData.resulted_at = new Date().toISOString();
   }
 
-  await labRef.update(updateData);
+  const { data: updatedLab, error } = await supabase
+    .from('lab_results')
+    .update(updateData)
+    .eq('id', labId)
+    .select()
+    .single();
 
-  const updatedDoc = await labRef.get();
+  if (error) {
+    throw new Error(`Failed to update lab status: ${error.message}`);
+  }
 
-  return {
-    id: labId,
-    ...updatedDoc.data()
-  };
+  return updatedLab;
 };
 
-const updateLabResult = async (labId, patientId, userId, updateData) => {
-  const db = getFirestore();
-  const patientDoc = await db.collection('patients').doc(patientId).get();
+const deleteLabResult = async (labId, patientId, userId) => {
+  const supabase = getSupabaseAdmin();
+  
+  // Verify patient belongs to user
+  const { data: patientData, error: patientError } = await supabase
+    .from('patients')
+    .select('user_id, is_active')
+    .eq('id', patientId)
+    .single();
 
-  if (!patientDoc.exists || patientDoc.data().userId !== userId || !patientDoc.data().isActive) {
+  if (patientError || !patientData || patientData.user_id !== userId || !patientData.is_active) {
     throw new Error('Patient not found or access denied');
   }
 
-  const labRef = db.collection('patients').doc(patientId).collection('labResults').doc(labId);
-  const labDoc = await labRef.get();
+  // Verify lab result belongs to patient
+  const { data: existingLab, error: labError } = await supabase
+    .from('lab_results')
+    .select('patient_id')
+    .eq('id', labId)
+    .single();
 
-  if (!labDoc.exists) {
+  if (labError || !existingLab || existingLab.patient_id !== patientId) {
     throw new Error('Lab result not found');
   }
 
-  const updates = {};
+  const { error } = await supabase
+    .from('lab_results')
+    .delete()
+    .eq('id', labId);
 
-  if (updateData.parameters && Array.isArray(updateData.parameters)) {
-    const category = updateData.category || labDoc.data().category || 'BIOCHEMISTRY';
-    updates.parameters = updateData.parameters.map(param => {
-      const status = getParameterStatus(param.key, param.value, category);
-      const paramInfo = getParameterInfo(param.key, category);
-      
-      return {
-        key: param.key,
-        name: param.name || (paramInfo ? paramInfo.name : param.key),
-        value: param.value,
-        unit: param.unit || (paramInfo ? paramInfo.unit : ''),
-        refMin: param.refMin ?? (paramInfo ? paramInfo.refMin : null),
-        refMax: param.refMax ?? (paramInfo ? paramInfo.refMax : null),
-        status: status
-      };
-    });
+  if (error) {
+    throw new Error(`Failed to delete lab result: ${error.message}`);
   }
 
-  if (updateData.status) updates.status = updateData.status;
-  if (updateData.notes !== undefined) updates.notes = updateData.notes;
-  if (updateData.category) updates.category = updateData.category;
-  if (updateData.testName) updates.testName = updateData.testName;
-
-  if (updateData.status === 'COMPLETED' && !labDoc.data().resultedAt) {
-    updates.resultedAt = new Date().toISOString();
-  }
-
-  await labRef.update(updates);
-
-  const updatedDoc = await labRef.get();
-
-  return {
-    id: labId,
-    ...updatedDoc.data()
-  };
+  return { success: true };
 };
 
 module.exports = {
   getAllLabResults,
   createLabResult,
   updateLabStatus,
-  updateLabResult
+  deleteLabResult,
 };

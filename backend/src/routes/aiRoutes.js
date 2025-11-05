@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/firebaseAuthMiddleware');
+const { protect } = require('../middleware/supabaseAuthMiddleware');
 const aiController = require('../controllers/aiController');
 
 router.post('/patients/:patientId/analyze', protect, aiController.analyzePatient);

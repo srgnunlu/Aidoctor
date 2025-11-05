@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const imagingController = require('../controllers/imagingController');
-const { protect } = require('../middleware/firebaseAuthMiddleware');
+const { protect } = require('../middleware/supabaseAuthMiddleware');
 
 router.get('/patients/:patientId/imaging', protect, imagingController.getAllImagingResults);
 router.post('/patients/:patientId/imaging', protect, imagingController.createImagingResult);

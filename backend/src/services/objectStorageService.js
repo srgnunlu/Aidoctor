@@ -1,4 +1,4 @@
-const { getStorage } = require('../config/firebase');
+const { getSupabaseAdmin } = require('../config/supabase');
 const { randomUUID } = require('crypto');
 
 class ObjectNotFoundError extends Error {
@@ -11,37 +11,45 @@ class ObjectNotFoundError extends Error {
 
 class ObjectStorageService {
   constructor() {
-    this.bucket = null;
+    this.bucketName = 'medical-files';
   }
 
-  getBucket() {
-    if (!this.bucket) {
-      const storage = getStorage();
-      this.bucket = storage.bucket();
-    }
-    return this.bucket;
+  getSupabase() {
+    return getSupabaseAdmin();
   }
 
   getPrivateObjectDir() {
-    return 'medical-files';
+    return 'uploads';
   }
 
-  async uploadImage(imageBuffer, fileExtension = 'jpg') {
+  /**
+   * Upload an image to Supabase Storage
+   * @param {Buffer} imageBuffer - The image buffer to upload
+   * @param {string} fileExtension - File extension (jpg, png, etc.)
+   * @param {string} userId - User ID to organize files
+   * @returns {Promise<{key: string, objectPath: string, size: number}>}
+   */
+  async uploadImage(imageBuffer, fileExtension = 'jpg', userId = null) {
     const objectId = randomUUID();
-    const key = `${this.getPrivateObjectDir()}/uploads/${objectId}.${fileExtension}`;
+    const userFolder = userId || 'shared';
+    const key = `${userFolder}/${this.getPrivateObjectDir()}/${objectId}.${fileExtension}`;
 
     try {
-      const bucket = this.getBucket();
-      const file = bucket.file(key);
+      const supabase = this.getSupabase();
 
-      await file.save(imageBuffer, {
-        metadata: {
+      const { data, error } = await supabase.storage
+        .from(this.bucketName)
+        .upload(key, imageBuffer, {
           contentType: this.getContentType(fileExtension),
-        },
-      });
+          upsert: false,
+        });
+
+      if (error) {
+        throw new Error(`Failed to upload image: ${error.message}`);
+      }
 
       return {
-        key,
+        key: key,
         objectPath: key,
         size: imageBuffer.length,
       };
@@ -51,21 +59,32 @@ class ObjectStorageService {
     }
   }
 
+  /**
+   * Get object file reference from Supabase Storage
+   * @param {string} objectPath - Path to the object in storage
+   * @returns {Promise<{key: string}>}
+   */
   async getObjectEntityFile(objectPath) {
     let key = objectPath;
 
+    // Handle legacy path format
     if (objectPath.startsWith('/objects/')) {
       const parts = objectPath.slice(1).split('/');
       const entityId = parts.slice(1).join('/');
-      key = `${this.getPrivateObjectDir()}/${entityId}`;
+      key = entityId;
     }
 
     try {
-      const bucket = this.getBucket();
-      const file = bucket.file(key);
-      const [exists] = await file.exists();
+      const supabase = this.getSupabase();
 
-      if (!exists) {
+      // Check if file exists
+      const { data, error } = await supabase.storage
+        .from(this.bucketName)
+        .list(key.substring(0, key.lastIndexOf('/')), {
+          search: key.substring(key.lastIndexOf('/') + 1)
+        });
+
+      if (error || !data || data.length === 0) {
         throw new ObjectNotFoundError();
       }
 
@@ -78,91 +97,128 @@ class ObjectStorageService {
     }
   }
 
+  /**
+   * Get object buffer from Supabase Storage
+   * @param {object} file - File object with key property
+   * @returns {Promise<Buffer>}
+   */
   async getObjectBuffer(file) {
     try {
-      const bucket = this.getBucket();
-      const fileRef = bucket.file(file.key);
-      const [buffer] = await fileRef.download();
+      const supabase = this.getSupabase();
 
-      return buffer;
+      const { data, error } = await supabase.storage
+        .from(this.bucketName)
+        .download(file.key);
+
+      if (error) {
+        throw new Error(`Failed to download object: ${error.message}`);
+      }
+
+      // Convert Blob to Buffer
+      const arrayBuffer = await data.arrayBuffer();
+      return Buffer.from(arrayBuffer);
     } catch (error) {
       console.error('Error getting object buffer:', error);
       throw error;
     }
   }
 
+  /**
+   * Download object and send to response
+   * @param {object} file - File object with key property
+   * @param {object} res - Express response object
+   * @param {number} cacheTtlSec - Cache TTL in seconds
+   */
   async downloadObject(file, res, cacheTtlSec = 3600) {
     try {
-      const bucket = this.getBucket();
-      const fileRef = bucket.file(file.key);
-      const [buffer] = await fileRef.download();
-
+      const buffer = await this.getObjectBuffer(file);
       const contentType = this.getContentType(file.key);
 
-      res.set({
-        'Content-Type': contentType,
-        'Content-Length': buffer.length,
-        'Cache-Control': `private, max-age=${cacheTtlSec}`,
-      });
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', `public, max-age=${cacheTtlSec}`);
+      res.setHeader('Content-Length', buffer.length);
 
       res.send(buffer);
     } catch (error) {
-      console.error('Error downloading file:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Error downloading file' });
-      }
+      console.error('Error downloading object:', error);
+      throw error;
     }
   }
 
-  async listObjects(prefix = '') {
+  /**
+   * Get signed URL for private object access
+   * @param {string} key - Object key in storage
+   * @param {number} expiresIn - URL expiration in seconds (default: 3600)
+   * @returns {Promise<string>}
+   */
+  async getSignedUrl(key, expiresIn = 3600) {
     try {
-      const bucket = this.getBucket();
-      const [files] = await bucket.getFiles({ prefix });
+      const supabase = this.getSupabase();
 
-      return files.map(file => ({
-        name: file.name,
-        size: file.metadata.size,
-        contentType: file.metadata.contentType,
-        updated: file.metadata.updated,
-      }));
+      const { data, error } = await supabase.storage
+        .from(this.bucketName)
+        .createSignedUrl(key, expiresIn);
+
+      if (error) {
+        throw new Error(`Failed to create signed URL: ${error.message}`);
+      }
+
+      return data.signedUrl;
     } catch (error) {
-      console.error('Error listing objects:', error);
-      return [];
+      console.error('Error creating signed URL:', error);
+      throw error;
     }
   }
 
+  /**
+   * Delete object from storage
+   * @param {string} key - Object key to delete
+   * @returns {Promise<boolean>}
+   */
   async deleteObject(key) {
     try {
-      const bucket = this.getBucket();
-      const file = bucket.file(key);
-      await file.delete();
+      const supabase = this.getSupabase();
+
+      const { error } = await supabase.storage
+        .from(this.bucketName)
+        .remove([key]);
+
+      if (error) {
+        throw new Error(`Failed to delete object: ${error.message}`);
+      }
+
       return true;
     } catch (error) {
       console.error('Error deleting object:', error);
-      return false;
+      throw error;
     }
   }
 
-  getContentType(keyOrExtension) {
-    let contentType = 'application/octet-stream';
+  /**
+   * Get content type from file extension
+   * @param {string} filename - Filename or path
+   * @returns {string}
+   */
+  getContentType(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    const contentTypes = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+      pdf: 'application/pdf',
+      json: 'application/json',
+      txt: 'text/plain',
+      html: 'text/html',
+      css: 'text/css',
+      js: 'application/javascript',
+    };
 
-    if (keyOrExtension.endsWith('.jpg') || keyOrExtension.endsWith('.jpeg')) {
-      contentType = 'image/jpeg';
-    } else if (keyOrExtension.endsWith('.png')) {
-      contentType = 'image/png';
-    } else if (keyOrExtension.endsWith('.pdf')) {
-      contentType = 'application/pdf';
-    } else if (keyOrExtension.endsWith('.gif')) {
-      contentType = 'image/gif';
-    } else if (keyOrExtension.endsWith('.webp')) {
-      contentType = 'image/webp';
-    }
-
-    return contentType;
+    return contentTypes[ext] || 'application/octet-stream';
   }
 }
 
-module.exports = {
-  ObjectStorageService,
-  ObjectNotFoundError,
-};
+module.exports = new ObjectStorageService();
+module.exports.ObjectNotFoundError = ObjectNotFoundError;

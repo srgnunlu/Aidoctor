@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/firebaseAuthMiddleware');
+const { protect } = require('../middleware/supabaseAuthMiddleware');
 const vitalController = require('../controllers/vitalController');
 
 router.get('/:patientId/vitals', protect, vitalController.getVitalSigns);

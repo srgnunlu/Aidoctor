@@ -1,18 +1,19 @@
 {
   "expo": {
     "name": "AI Doctor",
-    "slug": "aidoctor-app",
+    "slug": "ai-doctor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "owner": "srgnunlu",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aidoctor.app"
@@ -22,14 +23,16 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.aidoctor.app",
-      "edgeToEdgeEnabled": true
+      "package": "com.aidoctor.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "extra": {
-  "apiUrl": "https://aidoctor-ruddy.vercel.app"
-}
+      "apiUrl": "http://localhost:3001",
+      "supabaseUrl": "https://gywkasswccnhtqfdabqu.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5d2thc3N3Y2NuaHRxZmRhYnF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzMzkwNTIsImV4cCI6MjA3NzkxNTA1Mn0.6Q3vH3nRlq7jZbrfxaEX_bNwbgRfJxpJ_V0lk1ef4xI"
+    }
   }
 }

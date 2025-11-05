@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const labController = require('../controllers/labController');
-const { protect } = require('../middleware/firebaseAuthMiddleware');
+const { protect } = require('../middleware/supabaseAuthMiddleware');
 
 router.get('/patients/:patientId/labs', protect, labController.getAllLabResults);
 router.post('/patients/:patientId/labs', protect, labController.createLabResult);

@@ -1,193 +1,218 @@
-const { getFirestore } = require('../config/firebase');
+const { getSupabaseAdmin } = require('../config/supabase');
 const { FREE_PATIENT_LIMIT } = require('../config/constants');
 
 const getPatients = async (userId, includeInactive = false) => {
-  const db = getFirestore();
-  const patientsRef = db.collection('patients');
+  const supabase = getSupabaseAdmin();
   
-  let query = patientsRef.where('userId', '==', userId);
+  let query = supabase
+    .from('patients')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
   
   if (!includeInactive) {
-    query = query.where('isActive', '==', true);
+    query = query.eq('is_active', true);
   }
 
-  const snapshot = await query.orderBy('createdAt', 'desc').get();
+  const { data: patients, error } = await query;
   
-  const patients = [];
-  snapshot.forEach(doc => {
-    patients.push({
-      id: doc.id,
-      ...doc.data()
-    });
-  });
+  if (error) {
+    throw new Error(`Failed to fetch patients: ${error.message}`);
+  }
 
-  return patients;
+  return patients || [];
 };
 
 const getPatientById = async (patientId, userId) => {
-  const db = getFirestore();
-  const patientDoc = await db.collection('patients').doc(patientId).get();
+  const supabase = getSupabaseAdmin();
+  
+  // Get patient basic info
+  const { data: patientData, error: patientError } = await supabase
+    .from('patients')
+    .select('*')
+    .eq('id', patientId)
+    .single();
 
-  if (!patientDoc.exists) {
+  if (patientError || !patientData) {
     return null;
   }
 
-  const patientData = patientDoc.data();
-  
-  if (patientData.userId !== userId) {
+  // Check if patient belongs to user
+  if (patientData.user_id !== userId) {
     return null;
   }
 
-  const vitalSignsSnapshot = await db.collection('patients').doc(patientId)
-    .collection('vitalSigns')
-    .orderBy('recordedAt', 'desc')
-    .limit(5)
-    .get();
-  
-  const vitalSigns = [];
-  vitalSignsSnapshot.forEach(doc => {
-    vitalSigns.push({ id: doc.id, ...doc.data() });
-  });
+  // Get vital signs
+  const { data: vitalSigns, error: vitalError } = await supabase
+    .from('vital_signs')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('recorded_at', { ascending: false })
+    .limit(5);
 
-  const medicalHistoryDoc = await db.collection('patients').doc(patientId)
-    .collection('medicalHistory')
-    .doc('current')
-    .get();
-  
-  const medicalHistory = medicalHistoryDoc.exists ? { id: medicalHistoryDoc.id, ...medicalHistoryDoc.data() } : null;
+  // Get medical history
+  const { data: medicalHistoryData, error: historyError } = await supabase
+    .from('medical_history')
+    .select('*')
+    .eq('patient_id', patientId)
+    .single();
 
-  const labResultsSnapshot = await db.collection('patients').doc(patientId)
-    .collection('labResults')
-    .orderBy('orderedAt', 'desc')
-    .limit(10)
-    .get();
-  
-  const labResults = [];
-  labResultsSnapshot.forEach(doc => {
-    labResults.push({ id: doc.id, ...doc.data() });
-  });
+  // Get lab results
+  const { data: labResults, error: labError } = await supabase
+    .from('lab_results')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('ordered_at', { ascending: false })
+    .limit(10);
 
-  const imagingResultsSnapshot = await db.collection('patients').doc(patientId)
-    .collection('imagingResults')
-    .orderBy('orderedAt', 'desc')
-    .limit(10)
-    .get();
-  
-  const imagingResults = [];
-  imagingResultsSnapshot.forEach(doc => {
-    imagingResults.push({ id: doc.id, ...doc.data() });
-  });
+  // Get imaging results
+  const { data: imagingResults, error: imagingError } = await supabase
+    .from('imaging_results')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('ordered_at', { ascending: false })
+    .limit(10);
 
   return {
-    id: patientId,
     ...patientData,
-    vitalSigns,
-    medicalHistory,
-    labResults,
-    imagingResults,
+    vitalSigns: vitalSigns || [],
+    medicalHistory: medicalHistoryData || null,
+    labResults: labResults || [],
+    imagingResults: imagingResults || [],
   };
 };
 
 const createPatient = async (userId, patientData) => {
-  const db = getFirestore();
+  const supabase = getSupabaseAdmin();
   
-  const userDoc = await db.collection('users').doc(userId).get();
+  // Get user data to check limits
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('subscription_type')
+    .eq('id', userId)
+    .single();
   
-  if (!userDoc.exists) {
+  if (userError || !userData) {
     throw new Error('User not found');
   }
 
-  const user = userDoc.data();
+  // Check patient limit for FREE tier
+  if (userData.subscription_type === 'FREE') {
+    const { count, error: countError } = await supabase
+      .from('patients')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_active', true);
 
-  if (user.subscriptionType === 'FREE') {
-    const activePatientsSnapshot = await db.collection('patients')
-      .where('userId', '==', userId)
-      .where('isActive', '==', true)
-      .get();
+    if (countError) {
+      throw new Error(`Failed to check patient count: ${countError.message}`);
+    }
 
-    if (activePatientsSnapshot.size >= FREE_PATIENT_LIMIT) {
-      throw new Error(`Free tier limited to ${FREE_PATIENT_LIMIT} active patients. Please upgrade to add more patients.`);
+    if (count >= FREE_PATIENT_LIMIT) {
+      throw new Error(`Patient limit reached. Free tier allows maximum ${FREE_PATIENT_LIMIT} active patients.`);
     }
   }
 
+  // Create patient
   const newPatient = {
-    userId: userId,
+    user_id: userId,
     name: patientData.name,
-    age: patientData.age,
-    gender: patientData.gender,
-    identityNumber: patientData.identityNumber || null,
+    tc_no: patientData.tcNo || null,
+    age: patientData.age || null,
+    gender: patientData.gender || null,
     phone: patientData.phone || null,
-    complaint: patientData.complaint,
-    status: patientData.status || 'EVALUATION',
-    priority: patientData.priority || 'MEDIUM',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    admission_date: patientData.admissionDate || new Date().toISOString(),
+    complaint: patientData.complaint || null,
+    is_active: true,
   };
 
-  const docRef = await db.collection('patients').add(newPatient);
+  const { data: patient, error } = await supabase
+    .from('patients')
+    .insert(newPatient)
+    .select()
+    .single();
 
-  return {
-    id: docRef.id,
-    ...newPatient,
-  };
+  if (error) {
+    throw new Error(`Failed to create patient: ${error.message}`);
+  }
+
+  return patient;
 };
 
 const updatePatient = async (patientId, userId, updateData) => {
-  const db = getFirestore();
-  const patientRef = db.collection('patients').doc(patientId);
-  const patientDoc = await patientRef.get();
-
-  if (!patientDoc.exists) {
-    throw new Error('Patient not found or access denied');
-  }
-
-  const patientData = patientDoc.data();
+  const supabase = getSupabaseAdmin();
   
-  if (patientData.userId !== userId) {
-    throw new Error('Patient not found or access denied');
+  // Verify patient belongs to user
+  const { data: existingPatient, error: checkError } = await supabase
+    .from('patients')
+    .select('user_id')
+    .eq('id', patientId)
+    .single();
+
+  if (checkError || !existingPatient) {
+    throw new Error('Patient not found');
   }
 
-  const updates = {
-    ...updateData,
-    updatedAt: new Date().toISOString(),
-  };
+  if (existingPatient.user_id !== userId) {
+    throw new Error('Access denied');
+  }
 
-  await patientRef.update(updates);
+  // Prepare update data
+  const updatedFields = {};
+  
+  if (updateData.name) updatedFields.name = updateData.name;
+  if (updateData.tcNo !== undefined) updatedFields.tc_no = updateData.tcNo;
+  if (updateData.age !== undefined) updatedFields.age = updateData.age;
+  if (updateData.gender !== undefined) updatedFields.gender = updateData.gender;
+  if (updateData.phone !== undefined) updatedFields.phone = updateData.phone;
+  if (updateData.complaint !== undefined) updatedFields.complaint = updateData.complaint;
+  if (updateData.admissionDate !== undefined) updatedFields.admission_date = updateData.admissionDate;
+  if (updateData.isActive !== undefined) updatedFields.is_active = updateData.isActive;
 
-  const updatedDoc = await patientRef.get();
+  // Update patient
+  const { data: patient, error } = await supabase
+    .from('patients')
+    .update(updatedFields)
+    .eq('id', patientId)
+    .select()
+    .single();
 
-  return {
-    id: patientId,
-    ...updatedDoc.data(),
-  };
+  if (error) {
+    throw new Error(`Failed to update patient: ${error.message}`);
+  }
+
+  return patient;
 };
 
 const deletePatient = async (patientId, userId) => {
-  const db = getFirestore();
-  const patientRef = db.collection('patients').doc(patientId);
-  const patientDoc = await patientRef.get();
-
-  if (!patientDoc.exists) {
-    throw new Error('Patient not found or access denied');
-  }
-
-  const patientData = patientDoc.data();
+  const supabase = getSupabaseAdmin();
   
-  if (patientData.userId !== userId) {
-    throw new Error('Patient not found or access denied');
+  // Verify patient belongs to user
+  const { data: existingPatient, error: checkError } = await supabase
+    .from('patients')
+    .select('user_id')
+    .eq('id', patientId)
+    .single();
+
+  if (checkError || !existingPatient) {
+    throw new Error('Patient not found');
   }
 
-  await patientRef.update({
-    isActive: false,
-    updatedAt: new Date().toISOString(),
-  });
+  if (existingPatient.user_id !== userId) {
+    throw new Error('Access denied');
+  }
 
-  return {
-    id: patientId,
-    ...patientData,
-    isActive: false,
-  };
+  // Soft delete (mark as inactive)
+  const { error } = await supabase
+    .from('patients')
+    .update({ is_active: false })
+    .eq('id', patientId);
+
+  if (error) {
+    throw new Error(`Failed to delete patient: ${error.message}`);
+  }
+
+  return { success: true };
 };
 
 module.exports = {
@@ -195,5 +220,5 @@ module.exports = {
   getPatientById,
   createPatient,
   updatePatient,
-  deletePatient
+  deletePatient,
 };

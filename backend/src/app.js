@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { initializeFirebase } = require('./config/firebase');
+const { initializeSupabaseAdmin } = require('./config/supabase');
 const errorMiddleware = require('./middleware/errorMiddleware');
 const authRoutes = require('./routes/authRoutes');
 const patientRoutes = require('./routes/patientRoutes');
@@ -13,10 +13,10 @@ const chatRoutes = require('./routes/chatRoutes');
 const ocrRoutes = require('./routes/ocrRoutes');
 
 try {
-  initializeFirebase();
+  initializeSupabaseAdmin();
 } catch (error) {
-  console.error('⚠️  Firebase initialization warning:', error.message);
-  console.log('💡 Server will continue, but Firebase features may not work until FIREBASE_SERVICE_ACCOUNT is set');
+  console.error('⚠️  Supabase initialization warning:', error.message);
+  console.log('💡 Server will continue, but Supabase features may not work until SUPABASE credentials are set');
 }
 
 const app = express();

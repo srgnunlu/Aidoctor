@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ocrController = require('../controllers/ocrController');
-const { protect } = require('../middleware/firebaseAuthMiddleware');
+const { protect } = require('../middleware/supabaseAuthMiddleware');
 
 router.post('/:patientId/upload-and-process', protect, ocrController.uploadAndProcessOCR);
 

@@ -1,38 +1,31 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth } from '../config/firebase';
+import { supabase } from '../config/supabase';
+import { API_BASE_URL } from '../config/api';
 
-let store;
-
-export const setStore = (reduxStore) => {
-  store = reduxStore;
-};
-
+// Create axios instance with base URL
 const api = axios.create({
-  baseURL: 'https://15e9cc46-730a-4eb2-899b-69e93b81757d-00-os7rvp0fmmje.riker.replit.dev:3001/api',
-  timeout: 10000,
+  baseURL: API_BASE_URL,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// Request interceptor - automatically add Supabase session token
 api.interceptors.request.use(
   async (config) => {
     try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        const token = await currentUser.getIdToken(true);
-        config.headers.Authorization = `Bearer ${token}`;
-        await AsyncStorage.setItem('accessToken', token);
-      } else {
-        const token = await AsyncStorage.getItem('accessToken');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
+      // Get current session from Supabase
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (session && session.access_token) {
+        // Add auth token to request headers
+        config.headers.Authorization = `Bearer ${session.access_token}`;
       }
     } catch (error) {
-      console.error('Error getting token:', error);
+      console.error('Error getting session for request:', error);
     }
+    
     return config;
   },
   (error) => {
@@ -40,19 +33,38 @@ api.interceptors.request.use(
   }
 );
 
+// Response interceptor - handle errors globally
 api.interceptors.response.use(
   (response) => {
     return response;
   },
   async (error) => {
-    if (error.response?.status === 401) {
-      await AsyncStorage.removeItem('accessToken');
-      
-      if (store) {
-        const { logout } = await import('../store/slices/authSlice');
-        store.dispatch(logout());
+    const originalRequest = error.config;
+
+    // Handle 401 Unauthorized - token might be expired
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        // Try to refresh the session
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !session) {
+          // Sign out user if refresh fails
+          await supabase.auth.signOut();
+          return Promise.reject(error);
+        }
+
+        // Retry the original request with new token
+        originalRequest.headers.Authorization = `Bearer ${session.access_token}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Sign out user if refresh fails
+        await supabase.auth.signOut();
+        return Promise.reject(error);
       }
     }
+
     return Promise.reject(error);
   }
 );

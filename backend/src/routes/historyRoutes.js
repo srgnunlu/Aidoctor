@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/firebaseAuthMiddleware');
+const { protect } = require('../middleware/supabaseAuthMiddleware');
 const historyController = require('../controllers/historyController');
 
 router.get('/:patientId/history', protect, historyController.getMedicalHistory);
