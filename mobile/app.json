@@ -30,7 +30,7 @@
       "bundler": "metro"
     },
     "extra": {
-      "apiUrl": "http://localhost:3001",
+      "apiUrl": "https://aidoctor-r9d3qp3eu-unlusergen24-7385s-projects.vercel.app",
       "supabaseUrl": "https://gywkasswccnhtqfdabqu.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5d2thc3N3Y2NuaHRxZmRhYnF1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzMzkwNTIsImV4cCI6MjA3NzkxNTA1Mn0.6Q3vH3nRlq7jZbrfxaEX_bNwbgRfJxpJ_V0lk1ef4xI"
     }
