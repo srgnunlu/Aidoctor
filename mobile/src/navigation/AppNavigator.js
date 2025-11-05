@@ -4,18 +4,18 @@ import { useSelector, useDispatch } from 'react-redux';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
-import { loadUser } from '../store/slices/authSlice';
+import { checkAuthState } from '../store/slices/authSlice';
 import colors from '../constants/colors';
 
 export default function AppNavigator() {
   const dispatch = useDispatch();
-  const { isAuthenticated, loading } = useSelector((state) => state.auth);
+  const { isAuthenticated, isCheckingAuth } = useSelector((state) => state.auth);
 
   useEffect(() => {
-    dispatch(loadUser());
+    dispatch(checkAuthState());
   }, [dispatch]);
 
-  if (loading) {
+  if (isCheckingAuth) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
